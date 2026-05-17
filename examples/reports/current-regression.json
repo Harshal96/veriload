@@ -1,0 +1,42 @@
+{
+  "total_requests": 1000,
+  "total_failures": 30,
+  "error_rate": 0.03,
+  "latency_ms": {
+    "p50": 95,
+    "p90": 180,
+    "p95": 220,
+    "p99": 350,
+    "mean": 108,
+    "max": 620
+  },
+  "endpoints": {
+    "POST /checkout": {
+      "total_requests": 300,
+      "total_failures": 24,
+      "error_rate": 0.08,
+      "latency_ms": {
+        "p50": 140,
+        "p90": 260,
+        "p95": 310,
+        "p99": 480,
+        "mean": 165,
+        "max": 760
+      }
+    },
+    "GET /products": {
+      "total_requests": 700,
+      "total_failures": 6,
+      "error_rate": 0.008571,
+      "latency_ms": {
+        "p50": 58,
+        "p90": 90,
+        "p95": 112,
+        "p99": 175,
+        "mean": 65,
+        "max": 280
+      }
+    }
+  },
+  "segments": {}
+}

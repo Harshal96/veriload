@@ -1,0 +1,63 @@
+openapi: 3.1.0
+info:
+  title: Customer Fixture API
+  version: 1.0.0
+paths:
+  /customers:
+    post:
+      operationId: createCustomer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - name
+              properties:
+                email:
+                  type: string
+                name:
+                  type: string
+                company_name:
+                  type: string
+                external_id:
+                  type: string
+      responses:
+        "201":
+          description: Customer created
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - id
+                properties:
+                  id:
+                    type: string
+                  email:
+                    type: string
+  /customers/{customerId}:
+    get:
+      operationId: getCustomer
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Customer found
+    delete:
+      operationId: deleteCustomer
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Customer deleted

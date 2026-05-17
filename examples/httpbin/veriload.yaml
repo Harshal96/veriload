@@ -1,0 +1,19 @@
+scenario:
+  path: scenario.py
+  user_class: HttpBinSmokeUser
+run:
+  base_url: "https://httpbin.org"
+  users: 1
+  spawn_rate: 1
+  max_duration_seconds: 1
+data:
+  pool_size: 3
+  seed: 42
+  source: verisim
+profile:
+  type: soak
+  duration_seconds: 1
+  tick_seconds: 0
+safety:
+  allowed_hosts:
+    - httpbin.org

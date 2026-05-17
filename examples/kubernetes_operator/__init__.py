@@ -1,0 +1,1 @@
+"""Kubernetes Operator example assets."""

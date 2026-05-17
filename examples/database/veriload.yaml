@@ -1,0 +1,31 @@
+scenario:
+  path: scenario.py
+  user_class: SQLiteSmokeUser
+run:
+  database:
+    driver: sqlite
+    dsn: ":memory:"
+  users: 1
+  spawn_rate: 1
+  max_duration_seconds: 1
+data:
+  pool_size: 1
+  seed: 42
+  source: memory
+profile:
+  type: soak
+  duration_seconds: 1
+  tick_seconds: 0
+safety:
+  allowed_hosts: []
+slo:
+  global:
+    max_error_rate: 0
+  endpoints:
+    - name: DB select synthetic user
+      max_error_rate: 0
+reports:
+  json: reports/database-smoke.json
+  junit: reports/database-smoke.junit.xml
+  trace: reports/database-smoke.trace.jsonl
+  replay: reports/database-smoke.replay.json

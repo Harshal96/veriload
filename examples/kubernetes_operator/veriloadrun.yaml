@@ -1,0 +1,55 @@
+apiVersion: veriload.io/v1alpha1
+kind: VeriLoadRun
+metadata:
+  name: checkout-load
+  namespace: loads
+spec:
+  image: ghcr.io/acme/veriload-scenarios:latest
+  config:
+    inline: |
+      scenario:
+        path: /workspace/scenario.py
+        user_class: CheckoutOperatorUser
+      run:
+        base_url: https://api.example.test
+        users: 100
+        spawn_rate: 10
+        max_duration_seconds: 300
+      data:
+        pool_size: 100
+        seed: 42
+        source: verisim
+      profile:
+        type: soak
+        duration_seconds: 300
+      safety:
+        allowed_hosts:
+          - api.example.test
+  files:
+    configMapRef:
+      name: checkout-load-files
+  execution:
+    workers: 4
+    controllerPort: 5557
+    readyTimeoutSeconds: 60
+  artifacts:
+    enabled: true
+    retain: true
+    storage:
+      mode: pvc
+      size: 1Gi
+  cleanupPolicy: DeleteOnSuccess
+  ttlSecondsAfterFinished: 3600
+  controller:
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "512Mi"
+    env:
+      - name: VERILOAD_RUN_LABEL
+        value: checkout-load
+  worker:
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "512Mi"

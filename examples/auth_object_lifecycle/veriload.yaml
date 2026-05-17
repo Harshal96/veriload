@@ -1,0 +1,53 @@
+scenario:
+  path: scenario.py
+  user_class: AuthenticatedObjectUser
+run:
+  base_url: "https://api.example.test"
+  users: 5
+  spawn_rate: 2
+  max_duration_seconds: 60
+data:
+  pool_size: 10
+  seed: 20260514
+  source: memory
+  locales:
+    - locale: en_US
+      weight: 1
+profile:
+  type: soak
+  duration_seconds: 30
+  tick_seconds: 1
+safety:
+  allowed_hosts:
+    - api.example.test
+  max_users: 10
+  max_rps: 5
+  require_non_routable_contacts: true
+slo:
+  global:
+    max_p95_ms: 750
+    max_error_rate: 0.01
+  endpoints:
+    - name: POST /auth/register
+      max_p95_ms: 1000
+      max_error_rate: 0.01
+    - name: POST /auth/login
+      max_p95_ms: 750
+      max_error_rate: 0.01
+    - name: POST /objects
+      max_p95_ms: 750
+      max_error_rate: 0.01
+    - name: GET /objects/{id}
+      max_p95_ms: 500
+      max_error_rate: 0.01
+    - name: DELETE /objects/{id}
+      max_p95_ms: 750
+      max_error_rate: 0.01
+    - name: DELETE /users/{id}
+      max_p95_ms: 750
+      max_error_rate: 0.01
+reports:
+  json: reports/auth-object-lifecycle.json
+  junit: reports/auth-object-lifecycle.junit.xml
+  trace: reports/auth-object-lifecycle.trace.jsonl
+  replay: reports/auth-object-lifecycle.replay.json

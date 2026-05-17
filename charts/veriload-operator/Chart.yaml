@@ -1,0 +1,6 @@
+apiVersion: v2
+name: veriload-operator
+description: Kubernetes Operator for declarative VeriLoad distributed runs
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
