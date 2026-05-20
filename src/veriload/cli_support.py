@@ -10,6 +10,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from veriload.cleanup import CleanupSummary
 from veriload.compare import ComparisonResult
 from veriload.config import ReportsConfig, load_config
 from veriload.data import PersonaPool
@@ -146,6 +147,7 @@ def _write_reports(
     *,
     events: tuple,
     replay_manifest: dict,
+    cleanup: CleanupSummary | None = None,
     workers: tuple = (),
     base_dir: Path,
 ) -> None:
@@ -156,6 +158,7 @@ def _write_reports(
             _resolve_report_path(reports.json_path, base_dir),
             summary,
             slo_result,
+            cleanup=cleanup,
             workers=workers,
         )
     if reports.junit_path is not None:

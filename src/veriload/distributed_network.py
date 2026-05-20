@@ -11,6 +11,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from veriload.cleanup import CleanupFailure, CleanupSummary, merge_cleanup_summaries
 from veriload.cluster import ClusterBus, ClusterMessage
 from veriload.config import ConfigError, VeriLoadConfig
 from veriload.data import Company, Contact, Job, Person, PersonaAllocator, PersonaPool, PersonaRecord
@@ -33,7 +34,7 @@ from veriload.metrics import (
     SegmentSummary,
 )
 from veriload.run_bundle import create_run_bundle, extract_run_bundle
-from veriload.runtime import build_database_factory, build_persona_pool, build_profile
+from veriload.runtime import build_cleanup_snapshot, build_database_factory, build_persona_pool, build_profile
 from veriload.safety import assert_persona_pool_safe
 from veriload.scenarios import load_user_class
 
@@ -156,12 +157,14 @@ class NetworkDistributedController:
                 await self._server.wait_closed()
         if self._failures:
             raise NetworkDistributedError(str(self._failures[0])) from self._failures[0]
+        workers = tuple(
+            self._worker_results[node_id]
+            for node_id in sorted(self._worker_results, key=lambda item: self._worker_results[item].worker_index)
+        )
         return DistributedRunResult(
             summary=self._metrics.summary(),
-            workers=tuple(
-                self._worker_results[node_id]
-                for node_id in sorted(self._worker_results, key=lambda item: self._worker_results[item].worker_index)
-            ),
+            workers=workers,
+            cleanup=merge_cleanup_summaries(tuple(worker.cleanup for worker in workers)),
         )
 
     async def _handle_worker(
@@ -488,6 +491,7 @@ async def _execute_worker_assignment(
         run_seed=int(payload["run_seed"]),
         base_url=config.run.base_url,
         database_factory=build_database_factory(config.run.database),
+        cleanup_config=build_cleanup_snapshot(config.cleanup),
         spawn_rate=payload.get("spawn_rate"),
         cluster=cluster,
     )
@@ -497,6 +501,7 @@ async def _execute_worker_assignment(
         target_users=target_users,
         persona_ids=tuple(payload["persona_ids"]),
         summary=summary,
+        cleanup=runner.cleanup_summary,
     )
     return _WorkerExecution(result=result, events=metrics.events)
 
@@ -548,6 +553,7 @@ def _worker_result_from_payload(payload: dict[str, Any]) -> WorkerRunResult:
         target_users=int(payload["target_users"]),
         persona_ids=tuple(payload["persona_ids"]),
         summary=_run_summary_from_payload(payload["summary"]),
+        cleanup=_cleanup_summary_from_payload(payload.get("cleanup", {})),
     )
 
 
@@ -565,6 +571,25 @@ def _run_summary_from_payload(payload: dict[str, Any]) -> RunSummary:
             key: _segment_summary_from_payload(value)
             for key, value in payload["endpoints"].items()
         },
+    )
+
+
+def _cleanup_summary_from_payload(payload: dict[str, Any]) -> CleanupSummary:
+    if not payload:
+        return CleanupSummary()
+    return CleanupSummary(
+        enabled=bool(payload.get("enabled", False)),
+        attempted=int(payload.get("attempted", 0)),
+        succeeded=int(payload.get("succeeded", 0)),
+        failed=int(payload.get("failed", 0)),
+        failures=tuple(
+            CleanupFailure(
+                kind=str(item["kind"]),
+                target=str(item["target"]),
+                error=str(item["error"]),
+            )
+            for item in payload.get("failures", ())
+        ),
     )
 
 

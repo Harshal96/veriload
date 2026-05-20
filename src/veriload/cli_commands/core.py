@@ -123,6 +123,7 @@ def run_command(
                 execution.events,
                 workers=workers,
             ),
+            cleanup=execution.cleanup,
             workers=execution.workers,
             base_dir=config.parent,
         )
@@ -131,6 +132,20 @@ def run_command(
             Panel(str(exc), title="[bold red]Run failed[/bold red]", border_style="red")
         )
         raise typer.Exit(1) from exc
+
+    if not execution.cleanup.passed:
+        failures = "\n".join(
+            f"{failure.kind} {failure.target}: {failure.error}"
+            for failure in execution.cleanup.failures
+        )
+        console.print(
+            Panel(
+                failures or "Auto-cleanup failed.",
+                title="[bold red]Cleanup failed[/bold red]",
+                border_style="red",
+            )
+        )
+        raise typer.Exit(1)
 
     if not slo_result.passed:
         console.print(

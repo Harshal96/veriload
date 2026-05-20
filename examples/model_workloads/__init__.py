@@ -1,0 +1,1 @@
+"""Model-generated workload examples."""

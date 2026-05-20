@@ -77,6 +77,56 @@ def test_config_accepts_database_only_run_target() -> None:
     assert config.profile.target_users == 3
 
 
+def test_config_accepts_cleanup_targets_and_database_strategy() -> None:
+    config = VeriLoadConfig(
+        run={
+            "database": {"driver": "sqlite", "dsn": ":memory:"},
+            "users": 3,
+            "spawn_rate": 2,
+            "max_duration_seconds": 10,
+        },
+        data={"pool_size": 3, "seed": 1},
+        profile={"type": "soak", "duration_seconds": 5},
+        cleanup={
+            "enabled": True,
+            "http": {
+                "targets": [
+                    {
+                        "method": "POST",
+                        "path": "/objects",
+                        "delete_path": "/objects/{id}",
+                        "id_fields": ["id", "data.id"],
+                    }
+                ]
+            },
+            "database": {"strategy": "rollback", "tables": ["synthetic_users"]},
+        },
+        safety={"allowed_hosts": []},
+    )
+
+    assert config.cleanup is not None
+    assert config.cleanup.enabled is True
+    assert config.cleanup.http.targets[0].delete_path == "/objects/{id}"
+    assert config.cleanup.database.strategy == "rollback"
+    assert config.cleanup.database.tables == ("synthetic_users",)
+
+
+def test_config_rejects_invalid_cleanup_strategy() -> None:
+    with pytest.raises(ValueError, match="delete|rollback"):
+        VeriLoadConfig(
+            run={
+                "database": {"driver": "sqlite", "dsn": ":memory:"},
+                "users": 3,
+                "spawn_rate": 2,
+                "max_duration_seconds": 10,
+            },
+            data={"pool_size": 3, "seed": 1},
+            profile={"type": "soak", "duration_seconds": 5},
+            cleanup={"enabled": True, "database": {"strategy": "truncate", "tables": []}},
+            safety={"allowed_hosts": []},
+        )
+
+
 def test_config_requires_at_least_one_run_target() -> None:
     with pytest.raises(ConfigError, match="run.base_url or run.database is required"):
         VeriLoadConfig(

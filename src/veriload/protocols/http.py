@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 
+from veriload.cleanup import AutoCleanupManager
 from veriload.metrics import EventBus, RequestFailed, RequestFinished
 
 
@@ -21,11 +22,13 @@ class HttpClient:
         segment: str,
         persona_id: str | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
+        cleanup_manager: AutoCleanupManager | None = None,
     ) -> None:
         self._events = events
         self._segment = segment
         self._persona_id = persona_id
         self._client = httpx.AsyncClient(base_url=base_url, transport=transport)
+        self._cleanup_manager = cleanup_manager
 
     async def get(self, url: str, *, name: str | None = None, **kwargs: Any) -> httpx.Response:
         """Send a GET request and record a metric event."""
@@ -88,7 +91,17 @@ class HttpClient:
                     persona_id=self._persona_id,
                 )
             )
+            if self._cleanup_manager is not None:
+                self._cleanup_manager.register_http_response(
+                    method=method,
+                    path=url,
+                    response=response,
+                    cleanup_request=self._cleanup_request,
+                )
         return response
+
+    async def _cleanup_request(self, method: str, url: str) -> httpx.Response:
+        return await self._client.request(method, url)
 
     async def graphql(
         self,

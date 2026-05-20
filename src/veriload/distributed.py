@@ -13,6 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from veriload.cleanup import CleanupConfigSnapshot, CleanupSummary, merge_cleanup_summaries
 from veriload.data import PersonaAllocator, PersonaPool
 from veriload.engine import (
     DatabaseClientFactory,
@@ -46,6 +47,7 @@ class WorkerRunResult:
     target_users: int
     persona_ids: tuple[str, ...]
     summary: RunSummary
+    cleanup: CleanupSummary = CleanupSummary()
 
     @property
     def persona_count(self) -> int:
@@ -58,6 +60,7 @@ class DistributedRunResult:
 
     summary: RunSummary
     workers: tuple[WorkerRunResult, ...]
+    cleanup: CleanupSummary = CleanupSummary()
 
     @property
     def worker_count(self) -> int:
@@ -100,6 +103,7 @@ class DistributedRunner:
         run_seed: int,
         base_url: str | None = None,
         database_factory: DatabaseClientFactory | None = None,
+        cleanup_config: CleanupConfigSnapshot | None = None,
         stop_file: Path | None = None,
         spawn_rate: float | None = None,
     ) -> None:
@@ -115,6 +119,7 @@ class DistributedRunner:
         self.run_seed = run_seed
         self.base_url = base_url
         self.database_factory = database_factory
+        self.cleanup_config = cleanup_config or CleanupConfigSnapshot.disabled()
         self.stop_file = stop_file
         self.spawn_rate = spawn_rate
 
@@ -141,6 +146,7 @@ class DistributedRunner:
         return DistributedRunResult(
             summary=self.metrics_sink.summary(),
             workers=worker_results,
+            cleanup=merge_cleanup_summaries(tuple(worker.cleanup for worker in worker_results)),
         )
 
     async def _run_worker(
@@ -166,6 +172,7 @@ class DistributedRunner:
             run_seed=self.run_seed + partition.worker_index,
             base_url=self.base_url,
             database_factory=self.database_factory,
+            cleanup_config=self.cleanup_config,
             stop_file=self.stop_file,
             spawn_rate=_spawn_rate_for_worker(
                 self.spawn_rate,
@@ -181,6 +188,7 @@ class DistributedRunner:
             target_users=target_users,
             persona_ids=partition.persona_ids,
             summary=summary,
+            cleanup=runner.cleanup_summary,
         )
 
 

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from veriload.cleanup import AutoCleanupManager, CleanupConfigSnapshot, CleanupSummary, merge_cleanup_summaries
 from veriload.data import PersonaAllocator
 from veriload.metrics import EventBus, InMemoryMetricsSink, RunSummary
 from veriload.protocols import HttpClient
@@ -121,6 +122,7 @@ class LocalRunner:
         run_seed: int,
         base_url: str | None = None,
         database_factory: DatabaseClientFactory | None = None,
+        cleanup_config: CleanupConfigSnapshot | None = None,
         stop_file: Path | None = None,
         spawn_rate: float | None = None,
         cluster: Any | None = None,
@@ -134,9 +136,11 @@ class LocalRunner:
         self.run_seed = run_seed
         self.base_url = base_url
         self.database_factory = database_factory
+        self.cleanup_config = cleanup_config or CleanupConfigSnapshot.disabled()
         self.stop_file = stop_file
         self.spawn_rate = spawn_rate
         self.cluster = cluster
+        self._cleanup_summaries: tuple[CleanupSummary, ...] = ()
 
     async def run(self) -> RunSummary:
         """Execute a local closed-model run and return the metrics summary."""
@@ -172,16 +176,24 @@ class LocalRunner:
             await asyncio.gather(*tasks)
         return self.metrics_sink.summary()
 
+    @property
+    def cleanup_summary(self) -> CleanupSummary:
+        """Return aggregate cleanup results for this runner."""
+
+        return merge_cleanup_summaries(self._cleanup_summaries)
+
     async def _run_user(self, user_index: int) -> None:
         persona = self.persona_allocator.acquire(user_index)
         user_class = self.user_classes[user_index % len(self.user_classes)]
         events = EventBus((self.metrics_sink,))
+        cleanup_manager = AutoCleanupManager(self.cleanup_config)
         user = user_class(
             persona=persona,
             user_index=user_index,
             run_seed=self.run_seed,
             events=events,
             cluster=self.cluster,
+            cleanup_manager=cleanup_manager,
         )
         if self.base_url is not None:
             user.http = HttpClient(
@@ -189,6 +201,7 @@ class LocalRunner:
                 events=events,
                 segment=user.persona_segment,
                 persona_id=user.persona.persona_id,
+                cleanup_manager=cleanup_manager,
             )
         if self.database_factory is not None:
             user.db = self.database_factory(events, user)
@@ -200,8 +213,12 @@ class LocalRunner:
             try:
                 await user.on_stop()
             finally:
-                await _aclose_if_present(user.http)
-                await _aclose_if_present(user.db)
+                try:
+                    cleanup_summary = await cleanup_manager.cleanup()
+                    self._cleanup_summaries = (*self._cleanup_summaries, cleanup_summary)
+                finally:
+                    await _aclose_if_present(user.http)
+                    await _aclose_if_present(user.db)
 
     def _spawn_rate_limited(self) -> bool:
         return self.spawn_rate is not None and self.profile.tick_seconds > 0

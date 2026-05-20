@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from xml.etree import ElementTree
 
+from veriload.cleanup import CleanupFailure, CleanupSummary
 from veriload.metrics import InMemoryMetricsSink, RequestFailed, RequestFinished
 from veriload.reporting import write_json_report, write_junit_report, write_trace_report
 from veriload.slo import SloBreach, SloResult
@@ -29,6 +30,24 @@ def test_write_json_report_includes_summary_endpoints_segments_and_slo(tmp_path:
     assert report["segments"]["en_US:Retail"]["total_failures"] == 1
     assert report["slo"]["passed"] is False
     assert report["slo"]["breaches"][0]["metric"] == "p95_ms"
+
+
+def test_write_json_report_includes_cleanup_summary(tmp_path: Path) -> None:
+    path = tmp_path / "summary.json"
+    cleanup = CleanupSummary(
+        enabled=True,
+        attempted=1,
+        succeeded=0,
+        failed=1,
+        failures=(CleanupFailure(kind="db", target="orders", error="delete failed"),),
+    )
+
+    write_json_report(path, _summary(), SloResult(), cleanup=cleanup)
+
+    report = json.loads(path.read_text(encoding="utf-8"))
+    assert report["cleanup"]["enabled"] is True
+    assert report["cleanup"]["failed"] == 1
+    assert report["cleanup"]["failures"][0]["target"] == "orders"
 
 
 def test_write_junit_report_marks_breaches_as_failures(tmp_path: Path) -> None:

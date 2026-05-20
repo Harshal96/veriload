@@ -41,6 +41,59 @@ async def test_database_example_config_scenario_and_run() -> None:
     assert execution.summary.endpoints["DB select synthetic user"].total_requests == 1
 
 
+@pytest.mark.asyncio
+async def test_auto_cleanup_database_examples_run_delete_and_rollback() -> None:
+    example_dir = Path("examples/auto_cleanup_db")
+    py_compile.compile(str(example_dir / "scenario.py"), doraise=True)
+
+    for config_name, strategy in (
+        ("veriload-delete.yaml", "delete"),
+        ("veriload-rollback.yaml", "rollback"),
+    ):
+        config = load_config(example_dir / config_name)
+        user_class = load_user_class(example_dir / config.scenario.path, config.scenario.user_class)
+
+        assert issubclass(user_class, VeriUser)
+        assert config.cleanup is not None
+        assert config.cleanup.enabled is True
+        assert config.cleanup.database.strategy == strategy
+        assert config.cleanup.database.tables == ("cleanup_orders",)
+
+        execution = await execute_config(config, config_dir=example_dir)
+
+        assert execution.summary.total_requests == 3
+        assert execution.summary.total_failures == 0
+        assert execution.cleanup.enabled is True
+        assert execution.cleanup.attempted == 1
+        assert execution.cleanup.failed == 0
+
+
+@pytest.mark.asyncio
+async def test_model_workload_example_runs_generated_insert_select_and_cleanup() -> None:
+    example_dir = Path("examples/model_workloads")
+    py_compile.compile(str(example_dir / "scenario.py"), doraise=True)
+
+    for config_name, strategy in (
+        ("veriload.yaml", "delete"),
+        ("veriload-rollback.yaml", "rollback"),
+    ):
+        config = load_config(example_dir / config_name)
+        user_class = load_user_class(example_dir / config.scenario.path, config.scenario.user_class)
+
+        assert issubclass(user_class, VeriUser)
+        assert config.cleanup is not None
+        assert config.cleanup.enabled is True
+        assert config.cleanup.database.strategy == strategy
+
+        execution = await execute_config(config, config_dir=example_dir)
+
+        assert execution.summary.total_failures == 0
+        assert execution.summary.endpoints["DB insert generated_customers"].total_requests == 1
+        assert execution.summary.endpoints["DB select generated_customers"].total_requests == 1
+        assert execution.cleanup.attempted == 1
+        assert execution.cleanup.failed == 0
+
+
 def test_report_comparison_example_detects_checkout_regression() -> None:
     example_dir = Path("examples/reports")
     baseline = json.loads((example_dir / "baseline.json").read_text(encoding="utf-8"))

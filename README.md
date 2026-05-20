@@ -19,6 +19,8 @@ workers without regressing?"
 - Test API and database workflows with one metrics model.
 - Generate fixtures through SQLModel, Django ORM, or OpenAPI and clean them up
   automatically after the run.
+- Generate one-row database insert/select workloads from SQLModel or Django
+  models, with delete or rollback cleanup.
 - Import cURL, OpenAPI, HAR, and Postman files into editable Python scenarios.
 - Run locally, with in-process workers, as networked controller/worker jobs, or
   declaratively through the Kubernetes Operator.
@@ -35,6 +37,8 @@ workers without regressing?"
 | HTTP and GraphQL metrics | Records status codes, failures, latency, segments, and persona IDs through the injected `self.http` client. |
 | Database testing | Injects `self.db` for configured SQLite runs and supports DB-API compatible clients in custom scenarios. |
 | Model Fixtures | Creates and tracks SQLModel, Django ORM, and OpenAPI resources through `self.fixtures`. |
+| Model Workloads | Generates SQL or ORM insert/select load traffic from SQLModel and Django model metadata. |
+| Auto Cleanup | Tracks configured raw POST/INSERT calls and generated model workloads, then cleans them with DELETE, SQL DELETE, or DB rollback. |
 | Importers | Generates scenario starters from cURL, OpenAPI, HAR, and Postman inputs. |
 | Reports and gates | Writes JSON, JUnit, JSONL trace, replay artifacts, SLO results, and baseline comparisons. |
 | Distributed runs | Supports local worker sharding and true networked controller/worker execution. |
@@ -139,8 +143,10 @@ with `data.source: memory`.
 | --- | --- |
 | `examples/httpbin/` | Minimal HTTP scenario with persona-backed query parameters. |
 | `examples/database/` | Local SQLite smoke test with setup, query, and cleanup. |
+| `examples/auto_cleanup_db/` | Raw DB INSERT cleanup using generated DELETE or rollback. |
 | `examples/auth_object_lifecycle/` | Generated auth/object lifecycle template output. |
 | `examples/model_fixtures/` | SQLModel, Django ORM, OpenAPI, and custom field-name fixture examples. |
+| `examples/model_workloads/` | Generated DB insert/select workload from model metadata. |
 | `examples/kubernetes_operator/` | Declarative `VeriLoadRun` example with scenario ConfigMap and artifact PVCs. |
 | `examples/reports/` | Baseline/current JSON reports for comparison demos. |
 
@@ -300,6 +306,35 @@ See `examples/model_fixtures/` for:
 | `openapi_scenario.py` and `openapi.yaml` | OpenAPI resource fixtures from a spec file. |
 | `custom_field_names_scenario.py` | Explicit persona wiring with `overrides` for non-standard field names. |
 
+## Model-Generated Database Workloads
+
+Use model workloads when the database operation itself is the load-test traffic.
+VeriLoad can inspect SQLModel/SQLAlchemy or Django model metadata, generate one
+persona-backed row, select it, and register cleanup automatically.
+
+```python
+class CustomerDatabaseUser(VeriUser):
+    async def on_start(self) -> None:
+        self.customer_workload = self.model_workload(
+            Customer,
+            mode="sql",
+            overrides={"tenant_id": "load-test"},
+        )
+
+    @task(weight=1)
+    async def insert_and_read_customer(self) -> None:
+        customer = await self.customer_workload.insert()
+        result = await self.customer_workload.select(customer)
+        assert result.rows
+        self.stop()
+```
+
+`mode="sql"` runs generated SQL through `self.db`, so insert/select operations
+count in normal DB metrics. `mode="orm"` uses SQLModel sessions or Django
+managers and emits `ORM insert <Model>` / `ORM select <Model>` metrics.
+Fields that do not match VeriLoad's persona aliases must be supplied with
+`overrides`.
+
 ## Protocol Coverage
 
 ### HTTP and GraphQL
@@ -364,6 +399,30 @@ result = await self.db.query(
     name="DB select synthetic user",
 )
 ```
+
+Enable auto-cleanup explicitly when raw POST/INSERT calls or generated model
+workloads create state:
+
+```yaml
+cleanup:
+  enabled: true
+  http:
+    targets:
+      - method: POST
+        path: /objects
+        delete_path: /objects/{id}
+        id_fields: [id, data.id]
+  database:
+    strategy: delete  # delete or rollback
+    tables:
+      - users
+```
+
+HTTP cleanup uses `DELETE` from the response `Location` header or configured ID
+fields. Database cleanup can either delete configured inserted rows or roll back
+tracked DB inserts on the same per-user connection. Cleanup attempts and
+failures are written separately in JSON reports and do not count toward SLO
+metrics.
 
 For PostgreSQL, MySQL, or another DB-API compatible driver, install the driver
 in your test environment and construct a `DatabaseClient` in the scenario from

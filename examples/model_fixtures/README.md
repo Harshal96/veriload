@@ -62,3 +62,21 @@ Cleanup is always explicit:
 async def on_stop(self) -> None:
     await self.fixtures.cleanup()
 ```
+
+## Generated DB Workloads
+
+Use `self.model_workload(...)` when the generated database operation is the
+traffic under test rather than setup data:
+
+```python
+self.customer_workload = self.model_workload(
+    Customer,
+    mode="sql",
+    overrides={"tenant_id": "load-test"},
+)
+created = await self.customer_workload.insert()
+result = await self.customer_workload.select(created)
+```
+
+Enable `cleanup.enabled` in `veriload.yaml` so generated rows are deleted or
+rolled back after the user stops.

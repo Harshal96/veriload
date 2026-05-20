@@ -7,6 +7,7 @@ from dataclasses import asdict
 from pathlib import Path
 from xml.etree import ElementTree
 
+from veriload.cleanup import CleanupSummary
 from veriload.distributed import WorkerRunResult
 from veriload.metrics import MetricEvent, RunSummary
 from veriload.slo import SloResult
@@ -17,6 +18,7 @@ def write_json_report(
     summary: RunSummary,
     slo_result: SloResult,
     *,
+    cleanup: CleanupSummary | None = None,
     workers: tuple[WorkerRunResult, ...] = (),
 ) -> None:
     """Write a JSON run report."""
@@ -28,6 +30,8 @@ def write_json_report(
         "passed": slo_result.passed,
         "breaches": [asdict(breach) for breach in slo_result.breaches],
     }
+    if cleanup is not None:
+        payload["cleanup"] = asdict(cleanup)
     payload["workers"] = [asdict(worker) for worker in workers]
     report_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 

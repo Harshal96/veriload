@@ -5,7 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from veriload.config import ConfigError, LoadProfileConfig, RunDatabaseConfig, VeriLoadConfig
+from veriload.cleanup import CleanupConfigSnapshot, CleanupError, CleanupSummary
+from veriload.config import CleanupConfig, ConfigError, LoadProfileConfig, RunDatabaseConfig, VeriLoadConfig
 from veriload.data import (
     InMemoryPersonaSource,
     LocaleWeight,
@@ -36,6 +37,7 @@ class ExecutionResult:
     events: tuple[MetricEvent, ...]
     pool: PersonaPool
     workers: tuple[WorkerRunResult, ...] = ()
+    cleanup: CleanupSummary = CleanupSummary()
 
 
 async def run_config(
@@ -46,7 +48,10 @@ async def run_config(
 ) -> RunSummary:
     """Build and execute a local run from validated configuration."""
 
-    return (await execute_config(config, config_dir=config_dir, workers=workers)).summary
+    execution = await execute_config(config, config_dir=config_dir, workers=workers)
+    if not execution.cleanup.passed:
+        raise CleanupError(execution.cleanup)
+    return execution.summary
 
 
 async def execute_config(
@@ -77,6 +82,7 @@ async def execute_config(
     database_factory = build_database_factory(
         _resolve_database_config(config.run.database, config_dir)
     )
+    cleanup_config = build_cleanup_snapshot(config.cleanup)
     if workers > 1:
         distributed_runner = DistributedRunner(
             user_classes=[user_class],
@@ -90,6 +96,7 @@ async def execute_config(
             run_seed=config.data.seed,
             base_url=config.run.base_url,
             database_factory=database_factory,
+            cleanup_config=cleanup_config,
             stop_file=stop_file,
             spawn_rate=config.run.spawn_rate,
         )
@@ -99,6 +106,7 @@ async def execute_config(
             events=metrics.events,
             pool=pool,
             workers=result.workers,
+            cleanup=result.cleanup,
         )
 
     local_runner = LocalRunner(
@@ -109,11 +117,17 @@ async def execute_config(
         run_seed=config.data.seed,
         base_url=config.run.base_url,
         database_factory=database_factory,
+        cleanup_config=cleanup_config,
         stop_file=stop_file,
         spawn_rate=config.run.spawn_rate,
     )
     summary = await local_runner.run()
-    return ExecutionResult(summary=summary, events=metrics.events, pool=pool)
+    return ExecutionResult(
+        summary=summary,
+        events=metrics.events,
+        pool=pool,
+        cleanup=local_runner.cleanup_summary,
+    )
 
 
 def build_persona_pool(config: VeriLoadConfig) -> PersonaPool:
@@ -173,8 +187,30 @@ def build_database_factory(config: RunDatabaseConfig | None) -> DatabaseClientFa
             events=events,
             segment=user.persona_segment,
             persona_id=user.persona.persona_id,
+            cleanup_manager=user.cleanup,
         )
     raise ConfigError(f"Unsupported database driver: {config.driver}")
+
+
+def build_cleanup_snapshot(config: CleanupConfig | None) -> CleanupConfigSnapshot:
+    """Create an immutable runtime cleanup config snapshot."""
+
+    if config is None:
+        return CleanupConfigSnapshot.disabled()
+    return CleanupConfigSnapshot(
+        enabled=config.enabled,
+        http_targets=tuple(
+            {
+                "method": target.method,
+                "path": target.path,
+                "delete_path": target.delete_path,
+                "id_fields": target.id_fields,
+            }
+            for target in config.http.targets
+        ),
+        database_tables=config.database.tables,
+        database_strategy=config.database.strategy,
+    )
 
 
 def _resolve_optional_path(path: Path | None, config_dir: Path | None) -> Path | None:

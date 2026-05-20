@@ -37,6 +37,44 @@ class RunConfig(BaseModel):
     max_duration_seconds: PositiveInt
 
 
+class CleanupHttpTargetConfig(BaseModel):
+    """HTTP create target eligible for automatic cleanup."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    method: str = "POST"
+    path: str = Field(min_length=1)
+    delete_path: str | None = None
+    id_fields: tuple[str, ...] = ("id",)
+
+
+class CleanupHttpConfig(BaseModel):
+    """HTTP auto-cleanup settings."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    targets: tuple[CleanupHttpTargetConfig, ...] = ()
+
+
+class CleanupDatabaseConfig(BaseModel):
+    """Database auto-cleanup settings."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    strategy: Literal["delete", "rollback"] = "delete"
+    tables: tuple[str, ...] = ()
+
+
+class CleanupConfig(BaseModel):
+    """Auto-cleanup settings for resources created by load tests."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    enabled: bool = False
+    http: CleanupHttpConfig = Field(default_factory=CleanupHttpConfig)
+    database: CleanupDatabaseConfig = Field(default_factory=CleanupDatabaseConfig)
+
+
 class ScenarioConfig(BaseModel):
     """Scenario module and user class to execute."""
 
@@ -139,6 +177,7 @@ class VeriLoadConfig(BaseModel):
     run: RunConfig
     data: DataConfig
     profile: LoadProfileConfig
+    cleanup: CleanupConfig | None = None
     slo: SloConfig | None = None
     reports: ReportsConfig | None = None
     safety: SafetyConfig

@@ -76,12 +76,21 @@ def distributed_controller_command(
                 (),
                 workers=expect_workers,
             ),
+            cleanup=result.cleanup,
             workers=result.workers,
             base_dir=config.parent,
         )
     except (ConfigError, PersonaSourceError, SafetyError, NetworkDistributedError, TimeoutError) as exc:
         console.print(Panel(str(exc), title="[bold red]Controller failed[/bold red]", border_style="red"))
         raise typer.Exit(1) from exc
+
+    if not result.cleanup.passed:
+        failures = "\n".join(
+            f"{failure.kind} {failure.target}: {failure.error}"
+            for failure in result.cleanup.failures
+        )
+        console.print(Panel(failures, title="[bold red]Cleanup failed[/bold red]", border_style="red"))
+        raise typer.Exit(1)
 
     if not slo_result.passed:
         console.print(Panel("SLO breached.", title="[bold red]SLO breached[/bold red]", border_style="red"))

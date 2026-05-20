@@ -1,0 +1,1 @@
+"""Auto-cleanup database examples."""

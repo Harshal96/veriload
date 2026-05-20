@@ -9,10 +9,12 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
+from veriload.cleanup import AutoCleanupManager
 from veriload.cluster import NullClusterBus
 from veriload.data import PersonaRecord
 from veriload.fixtures.core import ModelFixtures
 from veriload.metrics import EventBus
+from veriload.model_workloads import create_model_workload
 
 UserCallable = Callable[..., Awaitable[Any]]
 F = TypeVar("F", bound=UserCallable)
@@ -115,6 +117,7 @@ class VeriUser:
         db: Any | None = None,
         fixtures: ModelFixtures | None = None,
         cluster: Any | None = None,
+        cleanup_manager: AutoCleanupManager | None = None,
     ) -> None:
         self.persona = persona
         self.user_index = user_index
@@ -128,6 +131,8 @@ class VeriUser:
             worker_index=user_index,
         )
         self.cluster = cluster or NullClusterBus()
+        self.cleanup = cleanup_manager
+        self.run_seed = run_seed
         self._rng = random.Random(f"{run_seed}:{user_index}")
         self._stopped = False
 
@@ -158,6 +163,32 @@ class VeriUser:
         """Build a JSON-like payload by resolving dotted paths on the persona."""
 
         return {key: _resolve_path(self.persona, path) for key, path in mapping.items()}
+
+    def model_workload(
+        self,
+        model: object,
+        *,
+        mode: str = "sql",
+        overrides: dict[str, Any] | None = None,
+        session_factory: Any | None = None,
+        cleanup: bool = True,
+    ) -> Any:
+        """Create a generated insert/select workload for a model."""
+
+        return create_model_workload(
+            model,
+            mode=mode,  # type: ignore[arg-type]
+            persona=self.persona,
+            run_id=f"seed-{self.run_seed}",
+            worker_index=self.user_index,
+            overrides=overrides or {},
+            db=self.db,
+            events=self.events,
+            segment=self.persona_segment,
+            persona_id=self.persona.persona_id,
+            cleanup_manager=self.cleanup if cleanup else None,
+            session_factory=session_factory,
+        )
 
     async def run_once(self) -> None:
         """Run one selected weighted task."""
